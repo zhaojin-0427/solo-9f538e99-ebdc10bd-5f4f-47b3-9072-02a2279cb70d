@@ -1,5 +1,5 @@
 """Pydantic request/response models (shared by both FastAPI apps)."""
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -142,3 +142,151 @@ class ConvertResponse(BaseModel):
 class ErrorResponse(BaseModel):
     error: str
     detail: Optional[str] = None
+
+
+# --------------------------------------------------------------------------
+# Almanac archive (/archives)
+# --------------------------------------------------------------------------
+# Population tables accept several equivalent shapes (objects with a header
+# and rows, plain matrices, CSV text), so they stay permissive here and are
+# validated by ``app.almanac.normalize_table`` against the package header.
+TablePayload = Any
+
+
+class SubmitRequest(BaseModel):
+    package: HandoffPackage = Field(
+        ...,
+        description="Version-1 handoff package from the builder instance.",
+    )
+    table: TablePayload = Field(
+        ...,
+        description=(
+            "Multi-period old-district population table. The header must "
+            "match the package old-district codes one-to-one. Each cell is a "
+            "non-negative integer or blank (blank = not reported that "
+            "period). Rows may be objects ({'period': ..., 'values': "
+            "[...]}) or plain lists."
+        ),
+    )
+
+
+class SupplementRequest(BaseModel):
+    table: TablePayload = Field(
+        ..., description="Whole replacement table to re-review."
+    )
+    package: Optional[HandoffPackage] = Field(
+        default=None,
+        description=(
+            "Optional echo of the original package. When supplied it must "
+            "equal the stored package; the stored package is always used."
+        ),
+    )
+    revision: Optional[int] = Field(
+        default=None,
+        description=(
+            "Optional expected pending revision. Rejected when a different "
+            "revision is pending."
+        ),
+    )
+
+
+class SwapPair(BaseModel):
+    first: str
+    second: str
+
+
+class ConfirmRequest(BaseModel):
+    revision: int = Field(
+        ...,
+        description="Revision of the review being confirmed, as returned by "
+        "the submission or supplement call.",
+    )
+    pair: Optional[SwapPair] = Field(
+        default=None,
+        description=(
+            "Optional echo of the unique consistent column pair. Ignored "
+            "when it matches; rejected when it differs."
+        ),
+    )
+
+
+class RelationCheck(BaseModel):
+    relation: Dict[str, int]
+    coefficients: Dict[str, int]
+    expression: str
+    value: int
+    satisfied: bool
+    synthesized: bool = Field(
+        ...,
+        description="True when this equation is a combination of several "
+        "package relations.",
+    )
+    source_relation_indices: List[int] = Field(default_factory=list)
+
+
+class PeriodReview(BaseModel):
+    period: Any
+    reported_districts: List[str]
+    missing_districts: List[str]
+    checked_relations: List[RelationCheck]
+    violations: List[RelationCheck]
+    satisfied: bool
+
+
+class CandidatePair(BaseModel):
+    first: str
+    second: str
+
+
+class TableReview(BaseModel):
+    contradiction_found: bool
+    message: str
+    periods: List[PeriodReview]
+    violations: List[RelationCheck]
+    candidates: List[CandidatePair] = Field(default_factory=list)
+    candidate_unique: bool = False
+    can_confirm: bool = False
+
+
+class TableOut(BaseModel):
+    header: List[str]
+    rows: List[Dict[str, Any]]
+
+
+class SubmitResponse(BaseModel):
+    archive_id: str
+    revision: int
+    status: str
+    review: TableReview
+    table: TableOut
+
+
+class ConfirmResponse(BaseModel):
+    archive_id: str
+    revision: int
+    status: str
+    swapped_pair: CandidatePair
+    corrected_table: TableOut
+    review: TableReview
+
+
+class ArchiveResponse(BaseModel):
+    archive_id: str
+    schema_version: int
+    package: HandoffPackage
+    status: str
+    revision: int
+    current: Dict[str, Any]
+    confirmation: Optional[Dict[str, Any]] = None
+
+
+class ArchiveList(BaseModel):
+    archives: List[str]
+
+
+class WorkflowErrorResponse(BaseModel):
+    error: str
+    detail: str
+    revision: Optional[int] = None
+    candidates: List[CandidatePair] = Field(default_factory=list)
+    review: Optional[TableReview] = None

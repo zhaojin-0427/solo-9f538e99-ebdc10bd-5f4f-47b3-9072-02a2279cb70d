@@ -18,9 +18,18 @@ services:
     command: uvicorn app.converter_app:app --host 0.0.0.0 --port 8000
     ports:
       - "8002:8000"
+    environment:
+      # Archive documents live here; the named volume keeps them across
+      # container restarts and recreations.
+      ARCHIVE_DIR: /srv/data/archives
+    volumes:
+      - archives:/srv/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 15s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+
+volumes:
+  archives:

@@ -11,8 +11,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
-RUN useradd --create-home --uid 10001 appuser
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /srv/data/archives \
+    && chown -R appuser:appuser /srv/data
 USER appuser
+
+# Archive documents (submissions, supplements, confirmations) persist here.
+ENV ARCHIVE_DIR=/srv/data/archives
+VOLUME ["/srv/data"]
 
 EXPOSE 8000
 
